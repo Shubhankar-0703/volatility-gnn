@@ -75,7 +75,6 @@ Primary comparisons:
 - `GNN-Granger-Volatility` vs `GNN-Granger`
 - `GNN-Granger-Volatility + Macro` vs `GNN-Granger + Macro`
 
-Use the existing evaluation, portfolio, and significance notebooks after prediction artifacts are generated.
 
 ## Research Interpretation
 

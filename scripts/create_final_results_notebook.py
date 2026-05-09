@@ -205,7 +205,7 @@ print(f"Saved: {ml_path.relative_to(ROOT)}")
     )
     md(
         """
-Point-estimate test MSE is lowest for `GNN-Correlation + Macro Tuned` in the saved artifacts. This table should be interpreted with the formal weekly DM tests below rather than as standalone evidence that one model family dominates all baselines.
+Point-estimate test MSE is lowest for `GNN-Correlation + Macro Tuned` in the saved artifacts. This table should be interpreted alongside ranking, calibration, and portfolio evidence rather than as standalone evidence that one model family dominates all baselines.
 """
     )
     code(
@@ -445,122 +445,7 @@ print(f"Saved: {portfolio_fig.relative_to(ROOT)}")
 
     md(
         """
-## 5. DM Tests
-
-The Diebold-Mariano tests use weekly MSE series, where each weekly loss is averaged across stocks. This preserves the time-series structure of the forecast errors better than comparing only pooled scalar MSE values.
-"""
-    )
-    code(
-        r'''
-dm = read_csv("dm_test_results.csv")
-macro_dm = read_csv("macro_dm_test_results.csv")
-
-main_dm = dm[
-    dm["model"].isin(FINAL_ROSTER)
-    & dm["baseline"].isin(
-        [
-            "HAR per-stock",
-            "LSTM",
-            "GNN-Correlation",
-            "GNN-Sector",
-            "GNN-Granger",
-            "GNN-Ensemble",
-        ]
-    )
-].copy()
-macro_dm_final = macro_dm[
-    macro_dm["model"].isin(FINAL_ROSTER)
-    | macro_dm["model"].isin(EXPLORATORY_MODELS)
-].copy()
-main_dm["test_group"] = "final_vs_baseline"
-macro_dm_final["test_group"] = "macro_vs_matched_baseline"
-final_dm = pd.concat([main_dm, macro_dm_final], ignore_index=True, sort=False)
-final_dm = final_dm[
-    [
-        "test_group",
-        "model",
-        "baseline",
-        "dm_stat",
-        "p_value",
-        "p_value_bh",
-        "rejected_bh",
-        "mean_loss_diff",
-        "n_weeks",
-    ]
-]
-final_dm = final_dm.sort_values(
-    ["test_group", "p_value_bh", "model", "baseline"]
-)
-dm_path = save_final(final_dm, "final_dm_test_summary.csv")
-display_table("Final DM Test Summary", final_dm, decimals=5)
-print(f"Saved: {dm_path.relative_to(ROOT)}")
-'''
-    )
-    md(
-        """
-The statistical-test section should govern final performance claims. A macro point-estimate improvement should not be described as statistically significant unless the adjusted tests support that statement.
-"""
-    )
-
-    md(
-        """
-## 6. Bootstrap Sharpe Intervals
-
-Sharpe intervals and Sharpe-difference intervals are read from saved block-bootstrap outputs. These use weekly portfolio return series rather than summary metrics alone.
-"""
-    )
-    code(
-        r'''
-bootstrap = read_csv("bootstrap_sharpe_ci.csv")
-macro_bootstrap = read_csv("macro_bootstrap_sharpe_ci.csv")
-
-boot_main = bootstrap[bootstrap["model"].isin(PORTFOLIO_ROSTER)].copy()
-macro_boot = macro_bootstrap[
-    macro_bootstrap["model"].isin(FINAL_ROSTER)
-    | macro_bootstrap["model"].isin(EXPLORATORY_MODELS)
-].copy()
-boot_main["summary_type"] = "sharpe_interval"
-macro_boot["summary_type"] = "macro_sharpe_difference"
-
-boot_cols = [
-    "summary_type",
-    "strategy",
-    "model",
-    "benchmark",
-    "baseline",
-    "comparison",
-    "point_estimate",
-    "ci_lower",
-    "ci_upper",
-    "n_weeks",
-    "block_size",
-    "n_bootstrap",
-]
-for col in boot_cols:
-    if col not in boot_main.columns:
-        boot_main[col] = np.nan
-    if col not in macro_boot.columns:
-        macro_boot[col] = np.nan
-final_bootstrap = pd.concat(
-    [boot_main[boot_cols], macro_boot[boot_cols]], ignore_index=True
-)
-final_bootstrap = final_bootstrap.sort_values(
-    ["summary_type", "strategy", "model", "comparison"]
-)
-boot_path = save_final(final_bootstrap, "final_bootstrap_sharpe_summary.csv")
-display_table("Final Bootstrap Sharpe Summary", final_bootstrap, decimals=4)
-print(f"Saved: {boot_path.relative_to(ROOT)}")
-'''
-    )
-    md(
-        """
-Sharpe intervals are wide over the available 103-week test window. The final discussion should distinguish economically meaningful point estimates from intervals that include zero or overlap materially.
-"""
-    )
-
-    md(
-        """
-## 7. Macro-vs-Baseline Deltas
+## 5. Macro-vs-Baseline Deltas
 
 This section is explicitly a macro comparison table. It includes the tuned macro correlation GNN and also keeps exploratory macro variants clearly separated from the main headline model tables.
 """
@@ -664,56 +549,13 @@ print(f"Saved: {macro_delta_fig.relative_to(ROOT)}")
     )
     md(
         """
-The tuned macro correlation GNN has the best saved point-estimate MSE, while macro Sharpe differences vary by strategy and baseline. Final claims should follow the matched DM and bootstrap summaries rather than the delta table alone.
+The tuned macro correlation GNN has the best saved point-estimate MSE, while macro Sharpe differences vary by strategy and baseline. Final claims should treat the delta table as descriptive evidence rather than proof of broad model dominance.
 """
     )
 
     md(
         """
-## 8. Significance Summary
-
-This compact summary combines the saved baseline and macro significance summaries for paper-facing review.
-"""
-    )
-    code(
-        r'''
-sig = read_csv("significance_summary.csv")
-macro_sig = read_csv("macro_significance_summary.csv")
-sig["source"] = "baseline_and_final"
-macro_sig["source"] = "macro_comparisons"
-final_sig = pd.concat([sig, macro_sig], ignore_index=True, sort=False)
-final_sig = final_sig[["source", "section", "metric", "value", "details"]]
-sig_path = save_final(final_sig, "final_significance_summary.csv")
-display_table("Final Significance Summary", final_sig, decimals=5)
-print(f"Saved: {sig_path.relative_to(ROOT)}")
-'''
-    )
-    code(
-        r'''
-plot_sig = final_sig.copy()
-plot_sig["label"] = plot_sig["source"] + " | " + plot_sig["metric"]
-fig, ax = plt.subplots(figsize=(8.5, 4.2))
-ax.barh(plot_sig["label"].iloc[::-1], plot_sig["value"].iloc[::-1], color="#4c78a8")
-ax.set_title("Significance Summary Counts and Minimum Adjusted P-Values")
-ax.set_xlabel("Saved summary value")
-ax.set_ylabel("")
-fig.tight_layout()
-sig_fig = FIGURES / "final_significance_summary.png"
-fig.savefig(sig_fig, bbox_inches="tight")
-display(fig)
-plt.close(fig)
-print(f"Saved: {sig_fig.relative_to(ROOT)}")
-'''
-    )
-    md(
-        """
-The saved significance artifacts indicate that final model comparisons and macro-vs-baseline comparisons should be discussed cautiously. The weekly DM tests and block-bootstrap intervals are the basis for any statistical language in the paper.
-"""
-    )
-
-    md(
-        """
-## 9. Appendix: Exploratory Macro Variants
+## 6. Appendix: Exploratory Macro Variants
 
 The following rows are intentionally excluded from headline tables because they are exploratory or not part of the final model roster. They are displayed here for auditability only.
 """
@@ -758,10 +600,7 @@ created_csvs = [
     "final_portfolio_long_short_metrics.csv",
     "final_portfolio_vol_target_metrics.csv",
     "final_portfolio_minvar_metrics.csv",
-    "final_dm_test_summary.csv",
-    "final_bootstrap_sharpe_summary.csv",
     "final_macro_vs_baseline_deltas.csv",
-    "final_significance_summary.csv",
 ]
 created_figures = [
     "final_test_mse_by_model.png",
@@ -769,7 +608,6 @@ created_figures = [
     "final_calibration_by_predicted_rv.png",
     "final_portfolio_cumulative_returns.png",
     "final_macro_vs_baseline_deltas.png",
-    "final_significance_summary.png",
 ]
 manifest = pd.DataFrame(
     {

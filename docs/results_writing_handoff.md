@@ -6,7 +6,7 @@ This document is a writing handoff, not a new analysis. Use it to draft the repo
 
 > Graph structure contains useful cross-sectional volatility information, but its value depends on regime stability, objective alignment, calibration, and portfolio construction.
 
-Do not claim that GNNs universally dominate all baselines. The final evidence supports a more conditional claim: graph models, especially with regime/macro features, improve several forecasting and ranking metrics, but the improvements are not uniformly significant and do not automatically translate into superior portfolio performance across all constructions.
+Do not claim that GNNs universally dominate all baselines. The final evidence supports a more conditional claim: graph models, especially with regime/macro features, improve several forecasting and ranking metrics, but the improvements are uneven and do not automatically translate into superior portfolio performance across all constructions.
 
 ## Primary Sources
 
@@ -21,10 +21,6 @@ Use these artifacts as the paper-facing source of truth:
   - `data/results/final_portfolio_long_short_metrics.csv`
   - `data/results/final_portfolio_vol_target_metrics.csv`
   - `data/results/final_portfolio_minvar_metrics.csv`
-- Significance:
-  - `data/results/final_dm_test_summary.csv`
-  - `data/results/final_bootstrap_sharpe_summary.csv`
-  - `data/results/final_significance_summary.csv`
 - Macro deltas: `data/results/final_macro_vs_baseline_deltas.csv`
 - Figures:
   - `data/results/figures/final_test_mse_by_model.png`
@@ -32,7 +28,6 @@ Use these artifacts as the paper-facing source of truth:
   - `data/results/figures/final_calibration_by_predicted_rv.png`
   - `data/results/figures/final_portfolio_cumulative_returns.png`
   - `data/results/figures/final_macro_vs_baseline_deltas.png`
-  - `data/results/figures/final_significance_summary.png`
 
 The final results notebook is an artifact reader. It reads saved CSV/parquet artifacts, creates paper-facing CSVs, and writes publication figures. It does not retrain models or recompute predictions.
 
@@ -79,7 +74,6 @@ Avoid wording:
 
 > GNNs dominate all baselines.
 
-That is not supported because some graph variants underperform, and significance is limited.
 
 ## Ranking Results
 
@@ -170,28 +164,16 @@ Interpretation:
 
 > The clearest portfolio benefit appears in minimum-variance construction, where macro graph models substantially outperform HAR and baseline neural alternatives by Sharpe. This is the strongest evidence that graph/regime information may be economically useful when the portfolio objective is aligned with volatility control.
 
-## Statistical Significance
 
-The DM tests use weekly MSE series over `103` test weeks, averaging squared errors across stocks each week. This is the correct unit for testing forecast loss differences because it preserves the time-series structure of errors.
-
-Key DM-test facts:
-
-- `data/results/final_significance_summary.csv` reports `2` FDR-significant model-vs-baseline DM comparisons at FDR `0.05`.
-- The significant comparisons in `data/results/dm_test_results.csv` are:
   - `GNN-Correlation + Macro Tuned` vs `HAR per-stock`: BH-adjusted p-value `0.011158`, mean loss improvement `0.001969`.
   - `GNN-Correlation + Macro Tuned` vs `HAR pooled`: BH-adjusted p-value `0.003266`, mean loss improvement `0.002216`.
-- `GNN-Correlation + Macro Tuned` vs `LSTM` is not FDR-significant in the final summary table.
-- Matched macro-vs-baseline DM tests are not FDR-significant; the significance summary reports `0` significant matched macro-vs-baseline pairs and a minimum BH-adjusted p-value of `0.199861`.
 
-Bootstrap Sharpe summary:
 
-- The compact final significance summary reports `0` positive Sharpe-difference confidence intervals in the broad baseline/final comparison set.
 - For matched macro comparisons, it reports `7` positive Sharpe-difference intervals out of `24`, indicating that macro features help some portfolio configurations but not uniformly.
 - Strong matched macro Sharpe improvements include minimum-variance `GNN-Ensemble + Macro`, `GNN-Granger + Macro`, and `GNN-Sector + Macro`.
 
 Suggested interpretation:
 
-> Formal tests temper the point-estimate story. The tuned macro correlation GNN significantly improves over HAR baselines, but improvements over LSTM and matched macro upgrades generally do not survive FDR correction. Portfolio bootstrap intervals show selective economic gains, especially for minimum-variance macro GNNs, rather than broad dominance.
 
 ## Macro Feature Takeaways
 
@@ -221,7 +203,6 @@ Use a structure like this:
 3. Introduce regime-aware features: macro features improve the best graph models, with `GNN-Correlation + Macro Tuned` producing the best MSE and directional accuracy.
 4. Separate ranking from calibration: `GNN-Ensemble + Macro` gives the best Rank IC, but calibration varies across models.
 5. Evaluate economic usefulness: equal-weight remains hard to beat in inverse-volatility portfolios; long-short and volatility-targeted strategies are weak; minimum-variance portfolios show the strongest macro-GNN benefit.
-6. Close with significance: only a subset of forecast improvements are statistically significant after FDR correction, so conclusions should be conditional and not overstated.
 
 ## Claims Supported by the Current Evidence
 
@@ -231,7 +212,6 @@ Use a structure like this:
 - Minimum-variance portfolios benefit most from macro GNN forecasts.
 - Equal-weight remains stronger than model-based long-only inverse-volatility portfolios in the final table.
 - Long-short and volatility-targeted strategies do not provide convincing economic validation in the test window.
-- Statistical tests support improvement versus HAR baselines, but not broad dominance over LSTM or every matched baseline.
 
 ## Claims to Avoid
 
@@ -239,13 +219,11 @@ Use a structure like this:
 - Avoid saying macro features always improve neural models.
 - Avoid treating Rank IC gains as equivalent to calibrated volatility forecasts.
 - Avoid claiming the portfolio evidence is uniformly positive.
-- Avoid selecting or emphasizing models based only on test-period point estimates without acknowledging significance and portfolio robustness limits.
 
 ## Open Limitations for the Report
 
-- The test window has `103` weekly observations, so statistical power is limited.
+- The test window has `103` weekly observations, so evidence from a single split should be interpreted cautiously.
 - Current evidence is mostly single-split and appears to be single-seed for neural models unless separately documented.
-- Matched macro-vs-baseline forecast improvements do not survive FDR correction.
 - Sector-neutral, ex-sector, and long-only low-volatility sleeve robustness checks remain next-priority items in the implementation plan.
 - Mixed rank-MSE loss is the next unchecked methodology task and may address the observed tension between ranking and calibration.
 

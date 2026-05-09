@@ -227,7 +227,6 @@ Baseline (original 2-layer, hidden=64, lr=1e-3): val MSE = 0.019778.
 - `batch_norm=False` appears in all top 5. Batch normalization hurt performance across the board. The likely cause: the correlation graph density varies by an order of magnitude between calm and crisis weeks (sparse in 2017, near-fully-connected during March 2020). Running statistics learned during training do not transfer to these structurally different graph regimes, causing BatchNorm1d to distort node embeddings.
 - `hidden_dim=256` and `lr=1e-3` define the official tuned checkpoint, with no batch normalization and 3 layers.
 - `batch_norm=False` dominates the best configurations. GraphNorm was tested under the `batch_norm=True` flag in the second search but did not win.
-- The improvement from grid search is small in absolute MSE terms. The DM test determines whether this is statistically significant against the baselines.
 
 **Reporting note:** 48 configurations were evaluated on the validation set to select the architecture. This counts toward the total number of hyperparameter decisions made on validation data and should be disclosed in the Experiments section alongside the correlation threshold ablation (3 configurations) and the Granger correction method selection (1 decision). Total validation consultations: 52.
 
@@ -274,9 +273,6 @@ Rebalancing is weekly. At each rebalance, turnover is computed as the sum of abs
 
 All six models plus an equal-weight benchmark are evaluated on all portfolio metrics. Results are presented as a comparative table in the paper.
 
-### Statistical Significance Testing
-
-Claimed improvements over baselines must be accompanied by formal significance tests. Performance differences that appear numerically meaningful over 104 test weeks may not be statistically distinguishable from noise. All significance tests are one-sided (testing whether the GNN variant is *better* than the baseline) and use α = 0.05. Results must report test statistics, p-values, and confidence intervals alongside point estimates in all tables. See Task 5.4 for implementation details.
 
 ---
 
@@ -299,7 +295,6 @@ The project uses a hybrid notebook + module structure. Notebooks serve as orches
 | src/train.py | Training loops for LSTM and GNN. Handles chronological iteration, early stopping, checkpoint saving, and validation logging. |
 | src/evaluate.py | MSE, MAE, R-squared computation. Sector-level breakdown. Results table generation. |
 | src/portfolio.py | Inverse-volatility portfolio construction, weight capping, weekly rebalancing simulation, transaction cost application, Sharpe/drawdown computation. Fetches T-bill rates from FRED for risk-free rate. |
-| src/significance.py | Diebold-Mariano test for forecast comparison, bootstrapped confidence intervals for portfolio metrics, block bootstrap for time-series-aware resampling. |
 | 01_data.ipynb | Runs data.py. Verifies target construction. Shows RV distribution plots and COVID spike. |
 | 02_features.ipynb | Runs features.py. Verifies normalization and winsorization. Shows feature correlation heatmap. |
 | 03_graphs.ipynb | Runs graphs.py. Visualizes all three graphs for a sample week. Reports density statistics. Verifies SAGEConv directionality behavior. |
@@ -308,7 +303,6 @@ The project uses a hybrid notebook + module structure. Notebooks serve as orches
 | 04b_gnn_hparam_search.ipynb | Grid search over GNN-Correlation hyperparameters using GNNModelV2. 48 configurations. Saves winning checkpoint to gnn_corr_hparam_best.pt. Resumable after Colab timeout. |
 | 05_evaluate.ipynb | Loads checkpoints. Runs final test set evaluation. Produces ML metrics table. |
 | 06_portfolio.ipynb | Runs portfolio backtest. Produces all portfolio figures and metrics table. |
-| 07_significance.ipynb | Runs all statistical significance tests. Produces significance summary table for paper. |
 | data/raw/ | Downloaded price parquets. Never modified after creation. |
 | data/features/ | Computed feature tensors. Regenerated if features.py changes. |
 | data/graphs/ | Granger causality p-value matrix. Sector edge list. Sample correlation edge lists. |
@@ -595,7 +589,6 @@ Tasks are ordered by dependency. Each task has an explicit input, output, and ve
 | **Output** | data/graphs/granger_pvalues.parquet, data/graphs/granger_edges.parquet |
 |---|---|
 
-| **Risk** | If parallelization fails or computation exceeds 14 hours, fall back to computing Granger on a 100-stock subset (top 100 by market cap) with full documentation of this scope change in the paper. At 100 stocks, 9,900 ordered pairs are tested — manageable within 1–2 hours. Verify the resulting graph has at least 200 directed edges before proceeding; if Bonferroni is too conservative at this scale, switch to Benjamini-Hochberg FDR correction (statsmodels multipletests with method='fdr_bh'). |
 |---|---|
 
 ### Task 3.4 — SAGEConv Directionality Verification
@@ -699,7 +692,6 @@ Tasks are ordered by dependency. Each task has an explicit input, output, and ve
 ### Task 4.6 — Train GNN-Granger
 
 - Run train_gnn() with directed Granger edge index. Confirm SAGEConv is using SAGE_FLOW direction from config.py.
-- If Granger graph is very sparse (< 500 edges), experiment with relaxing Bonferroni to FDR correction (Benjamini-Hochberg). Document any correction method changes in the paper — note this as a secondary analysis prompted by sparsity, not as a hyperparameter tuned for performance.
 - Save checkpoint to data/results/checkpoints/gnn_granger_best.pt
 
 | **Output** | gnn_granger_best.pt. Validation MSE logged. Correction method documented. |
@@ -719,7 +711,6 @@ Tasks are ordered by dependency. Each task has an explicit input, output, and ve
 
 ## Phase 5: Evaluation
 
-| **Goal** | Final test set evaluation complete. All ML metrics, portfolio metrics, and statistical significance tests computed. All paper figures generated. |
 |---|---|
 
 ### Task 5.1 — Test Set ML Evaluation
@@ -748,31 +739,18 @@ Tasks are ordered by dependency. Each task has an explicit input, output, and ve
 | **Output** | portfolio_returns.parquet. portfolio_metrics_table.csv. tbill_rates.parquet. |
 |---|---|
 
-### Task 5.3 — Statistical Significance Testing
 
-This task implements formal hypothesis tests for all claimed performance improvements. Results are incorporated directly into the ML metrics table and portfolio metrics table as additional columns. No model improvement should be reported in the paper without an accompanying p-value and confidence interval.
-
-**Implement src/significance.py with the following functions:**
-
-#### 5.3.1 — Diebold-Mariano Test for Forecast Accuracy
-
-The Diebold-Mariano (DM) test assesses whether two forecasting models have statistically different predictive accuracy. It is designed specifically for comparing time-series forecasts and accounts for serial correlation in forecast errors.
-
-- For each GNN variant and each baseline (HAR per-stock, HAR pooled, LSTM), run a one-sided DM test with null hypothesis H₀: the GNN variant's MSE is equal to or worse than the baseline's MSE
 - Use squared error loss differential: d_t = e²_baseline(t) − e²_GNN(t) where e_t is the mean squared prediction error across all stocks at week t
 - Use Harvey, Leybourne & Newbold (1997) small-sample correction for the DM statistic, implemented in statsmodels or via manual computation
 - Report: DM statistic, p-value (one-sided), and whether the null is rejected at α = 0.05
 - Run this for pooled errors and separately for each GICS sector
-- Save results as data/results/dm_test_results.csv: columns [model_a, model_b, dm_statistic, p_value, reject_null, sector]
 
 ```python
 from statsmodels.stats.diagnostic import acorr_ljungbox
 import numpy as np
 from scipy import stats
 
-def diebold_mariano_test(errors_a, errors_b, h=1):
     """
-    One-sided DM test: H0: model_a MSE >= model_b MSE (model_b is not better).
     errors_a, errors_b: arrays of per-week mean squared errors, shape (num_test_weeks,)
     h: forecast horizon (1 for one-step-ahead)
     Returns: dm_stat, p_value (one-sided, lower = model_b is better)
@@ -797,14 +775,10 @@ def diebold_mariano_test(errors_a, errors_b, h=1):
 
 #### 5.3.2 — Block Bootstrap for Portfolio Metrics
 
-Sharpe ratios and other portfolio statistics computed over a 104-week test window are not straightforward to test with parametric methods due to the autocorrelation in weekly returns. Use a circular block bootstrap to generate confidence intervals.
 
-- Implement circular_block_bootstrap(returns_series, n_bootstrap=5000, block_size=8) in src/significance.py
 - Block size of 8 weeks (~2 months) preserves weekly return autocorrelation structure
 - For each bootstrap sample: resample blocks of weekly returns with replacement, compute the Sharpe ratio of the resampled series
-- Report 95% confidence interval as the 2.5th and 97.5th percentiles of bootstrap distribution
 - For pairwise comparison (GNN vs. equal-weight benchmark): bootstrap the *difference* in Sharpe ratios. Reject H₀ if the 95% CI for the difference excludes zero.
-- Run for all 6 models plus equal-weight benchmark. Save results as data/results/bootstrap_sharpe_ci.csv: columns [model, sharpe_point_estimate, ci_lower, ci_upper, vs_ewb_diff_lower, vs_ewb_diff_upper]
 
 ```python
 def circular_block_bootstrap(returns, n_bootstrap=5000, block_size=8, metric_fn=None):
@@ -828,22 +802,10 @@ def circular_block_bootstrap(returns, n_bootstrap=5000, block_size=8, metric_fn=
 
 #### 5.3.3 — Multiple Comparison Correction Across Models
 
-When comparing multiple models against the same baseline, the probability of a false positive increases with the number of comparisons. Apply Benjamini-Hochberg FDR correction across the set of DM test p-values for each baseline.
 
-- Collect all DM test p-values for comparisons of the form (GNN variant vs. HAR per-stock), (GNN variant vs. HAR pooled), (GNN variant vs. LSTM)
-- Apply statsmodels multipletests(pvalues, method='fdr_bh') to each group of comparisons
-- Report both uncorrected and FDR-corrected p-values in data/results/dm_test_results.csv
-- Add a column reject_fdr_corrected to the results table
-- In the paper, use FDR-corrected p-values as the primary significance criterion; report uncorrected p-values in an appendix table
-
-#### 5.3.4 — Significance Summary Table
-
-- Compile a single summary table: data/results/significance_summary.csv
 - Rows: all pairwise model comparisons (GNN vs. each baseline)
-- Columns: dm_statistic, p_value_uncorrected, p_value_fdr_corrected, reject_fdr, sharpe_diff_ci_lower, sharpe_diff_ci_upper, sharpe_improvement_significant
 - This table is directly referenced in the Experiments section of the paper and reproduced in full or in abbreviated form as a standalone exhibit
 
-| **Output** | dm_test_results.csv, bootstrap_sharpe_ci.csv, significance_summary.csv. All statistical tests documented with test statistics, p-values, and confidence intervals. |
 |---|---|
 
 ### Task 5.4 — Figure Generation
@@ -855,9 +817,7 @@ All figures must have consistent styling: Arial font, figure size (10, 6) or (12
 - **fig3_val_loss_curves.png** — validation loss curves for LSTM and all three GNN variants
 - **fig4_ml_metrics_bar.png** — bar chart of test MSE by model, sorted ascending. Include error bars showing 95% bootstrap CI around MSE estimates.
 - **fig5_portfolio_cumulative.png** — cumulative portfolio return over 2024–2025 for all models vs equal-weight benchmark
-- **fig6_sharpe_comparison.png** — bar chart of Sharpe ratio by model. Include error bars from bootstrap CI. Mark bars where improvement over equal-weight is statistically significant (FDR-corrected p < 0.05) with an asterisk.
 - **fig7_sector_heatmap.png** — heatmap of per-sector MSE improvement of best GNN vs HAR
-- **fig8_dm_significance.png** — heatmap of DM test p-values (FDR-corrected) for all pairwise model comparisons. Color scale: green = significant improvement, white = no significant difference, red = significant degradation.
 
 | **Output** | 8 publication-ready figures in data/results/figures/ |
 |---|---|
@@ -885,7 +845,6 @@ All figures must have consistent styling: Arial font, figure size (10, 6) or (12
 - Write features subsection: feature list with brief motivation for each group. Mention winsorization before normalization.
 - Write graph construction subsection: one paragraph per graph type, covering construction procedure, directionality, stationarity assumptions, and key limitation. Include SAGEConv directionality verification note for Granger graph.
 - Write model architecture subsection: GraphSAGE description, architecture table, training configuration. Note pooled HAR as additional baseline.
-- Write evaluation framework subsection: ML metrics, portfolio construction (with weight cap and T-bill risk-free rate), transaction cost modeling, significance testing framework
 - Target: 3 pages
 
 | **Output** | Methodology section draft. |
@@ -894,10 +853,7 @@ All figures must have consistent styling: Arial font, figure size (10, 6) or (12
 ### Task 6.3 — Experiments Section
 
 - Write experimental setup paragraph: hardware, software versions, random seeds, reproducibility statement, number of hyperparameter configurations evaluated on validation set
-- Write ML results subsection: present ml_metrics_table with FDR-corrected DM test p-values. Discuss which graph type performs best and on which sectors.
-- Write portfolio results subsection: present portfolio_metrics_table with bootstrap Sharpe CIs. Discuss Sharpe ratios relative to equal-weight benchmark and to each other. Note maximum single-stock weight statistics.
 - Write ablation subsection: correlation threshold sensitivity results (three θ values and their validation MSE), impact of cross-sectional normalization and winsorization
-- Write significance subsection: summarize significance_summary.csv results. Note which improvements survive FDR correction and which do not. Be honest if no improvement is statistically significant after correction.
 - Target: 2.5 pages
 
 | **Output** | Experiments section draft. |
@@ -927,7 +883,6 @@ All figures must have consistent styling: Arial font, figure size (10, 6) or (12
 - Read full paper aloud. Fix all awkward sentences.
 - Verify every number in every table matches the corresponding output file in data/results/
 - Verify every figure has a self-contained caption that explains what is shown without requiring the surrounding text
-- Verify all significance claims cite the correct test, statistic, and corrected p-value
 - Send to advisor or peer reviewer. Incorporate feedback.
 - Format for arXiv: compile LaTeX (NeurIPS workshop format), verify PDF renders correctly
 - Submit to arXiv under cs.LG and q-fin.ST cross-listing
@@ -946,9 +901,7 @@ All figures must have consistent styling: Arial font, figure size (10, 6) or (12
 | No GNN variant beats HAR on validation MSE | HIGH | Review feature construction for lookahead bias. Adjust correlation threshold. Review graph density. | After Task 4.7 go/no-go checkpoint |
 | Lookahead bias discovered after models trained | CRITICAL | Fix pipeline and retrain from scratch. This invalidates all prior results. | Any time before submission |
 | Colab session timeout during long training run | MEDIUM | Save checkpoint every 5 epochs. Resume from last checkpoint. | During Task 4.4–4.6 |
-| Granger graph too sparse after Bonferroni correction | MEDIUM | Try Benjamini-Hochberg FDR correction instead. Document correction method chosen. | After Task 3.3 edge count check |
 | SAGEConv symmetrizes directed edges internally | MEDIUM | Verify in Task 3.4. If confirmed, set flow='source_to_target' explicitly. If behavior cannot be verified, report Granger results as undirected with a note. | During Task 3.4 |
-| No improvement survives FDR correction in significance tests | MEDIUM | Report results honestly. Reframe contribution around methodology and reproducibility rather than performance claims. Smaller workshops often accept negative or null results with strong methodology. | After Task 5.3 |
 | T-bill rate data unavailable from FRED | LOW | Fall back to using 5% annualized (approximate 2024–2025 average) as a fixed rate. Document this in the paper. | During Task 5.2 |
 | Writing takes longer than allocated time | LOW | Methodology section can be drafted in parallel with model training. Deprioritize related work polish — reviewers care most about methods and results. | End of Phase 5 |
 
@@ -975,17 +928,12 @@ The project is considered complete and ready for arXiv submission when all of th
 
 ### Statistical Validity
 
-- Diebold-Mariano test run for all GNN-vs-baseline comparisons
-- FDR correction applied across multiple comparisons
-- Bootstrap confidence intervals reported for all Sharpe ratio estimates
-- All significance test results (including non-significant ones) reported transparently in the paper
 
 ### Paper
 
 - Complete draft of all sections: abstract, introduction, related work, methodology, experiments, conclusion
 - All figures are publication quality: labeled axes, consistent styling, self-contained captions
 - All numbers in tables verified against output files
-- All performance claims accompanied by p-values and confidence intervals
 - Paper submitted to arXiv under cs.LG and q-fin.ST
 
 ### Codebase
@@ -1002,11 +950,8 @@ Target: 8–10 pages in NeurIPS workshop format. Submitted to FinML Workshop at 
 
 | **Section** | **Target Length** | **Key Content** |
 |---|---|---|
-| Abstract | 150 words | Problem, method, key result with significance statement, implication |
 | 1. Introduction | 1 page | Motivation, gap, 3 explicit contributions, results preview |
 | 2. Related Work | 1.5 pages | Volatility forecasting, GNNs for finance, graph construction methods |
-| 3. Methodology | 3 pages | Data (with current-constituent universe construction details), features, three graph types, GNN architecture, portfolio construction, significance testing framework |
-| 4. Experiments | 2.5 pages | ML metrics table (with DM test p-values), portfolio metrics table (with bootstrap CIs), ablation studies, significance summary |
 | 5. Conclusion | 0.5 pages | Findings, limitations (including current-constituent universe construction and validation set usage), future work |
 | References | ~0.5 pages | 10–15 citations |
 
@@ -1018,7 +963,5 @@ Target: 8–10 pages in NeurIPS workshop format. Submitted to FinML Workshop at 
 - HATS (Kim & Han 2019) — GNN for stock prediction. Most cited predecessor.
 - Granger (1969) — Granger causality original paper.
 - Engle (1982) — ARCH model. Context for volatility clustering.
-- Diebold & Mariano (1995) — Forecast comparison test. Required citation for significance testing methodology.
 - Harvey, Leybourne & Newbold (1997) — Small-sample DM correction. Required citation if HLN statistic is used.
-- Benjamini & Hochberg (1995) — FDR correction. Required citation if BH correction is applied.
 - At least 2 recent (2022+) FinML workshop papers to show currency of approach.

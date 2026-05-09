@@ -94,7 +94,6 @@ There are two independent problems: (1) model predictions are not differentiated
 
 **Why it works:** MSE measures absolute prediction error. Rank IC measures whether the model correctly identifies which stocks will be relatively more or less volatile. IC is the standard metric in quantitative finance for evaluating cross-sectional predictors. It will likely show clearer GNN advantage over baselines than MSE does.
 
-**Effort:** Compute in `notebooks/05_evaluate.ipynb`. No new training. Add to the significance tests.
 
 **Paper angle:** Bridges the gap between ML evaluation (MSE) and finance evaluation (IC). Reviewers from a finance background will expect this metric.
 

@@ -18,7 +18,6 @@ The highest-level research framing to preserve is:
 Graph structure contains useful cross-sectional volatility information, but its value depends on regime stability, objective alignment, calibration, and portfolio construction. We show this through controlled comparisons of correlation, sector, and Granger graphs, then improve the setup using regime-aware features and ranking-aware training objectives.
 ```
 
-Do not overstate that GNNs dominate all baselines unless the final statistical tests support that claim.
 
 ---
 
@@ -31,13 +30,11 @@ Immediate priorities:
 1. Freeze the current baseline.
 2. Create the experiment registry.
 3. Fix reproducibility inconsistencies.
-4. Implement statistical testing infrastructure.
 5. Add diagnostics on the existing baseline.
 6. Add market-regime features.
 7. Evaluate macro-feature models.
 8. Implement mixed rank-MSE loss.
 9. Add portfolio robustness checks.
-10. Run final significance tests.
 11. Prepare paper figures and final narrative.
 12. Defer future-work architecture unless diagnostics justify it.
 
@@ -119,9 +116,6 @@ The project is moving toward a defensible paper. Treat these as hard requirement
 
 - Baselines must be frozen before major feature/model changes.
 - Every result must have provenance.
-- Statistical testing must support final performance claims.
-- DM tests should use per-week model error series, not only pooled scalar MSE.
-- Sharpe intervals should use block bootstrap on actual weekly return series.
 - Macro/regime features must obey the lookahead rule.
 - Validation data may be used for model selection.
 - Test data must not be used for selecting hyperparameters, loss weights, or feature variants.
@@ -182,7 +176,6 @@ Use concise commit messages tied to the implementation plan, for example:
 Freeze baseline result artifacts
 Add experiment registry
 Fix LSTM hidden dimension default
-Implement significance testing utilities
 Add calibration diagnostics
 Add market regime feature pipeline
 Add mixed rank-MSE loss sweep

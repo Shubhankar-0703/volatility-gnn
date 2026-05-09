@@ -227,7 +227,9 @@ def compute_correlation_graph_density(
                     "num_edges": int(len(group) // 2),
                     "density": float((len(group) // 2) / possible_edges),
                     "mean_degree": float(len(group) / num_nodes),
-                    "max_degree": int(pd.concat([group["src"], group["dst"]]).value_counts().max()),
+                    # Precomputed undirected graphs store both directions, so
+                    # counting one directed source side gives the undirected degree.
+                    "max_degree": int(group["src"].value_counts().max()),
                     "avg_abs_correlation": avg_abs_cache[week],
                 }
             )

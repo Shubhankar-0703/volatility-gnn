@@ -43,10 +43,6 @@ Notebook writing rule for every applicable item: create or update notebooks so t
   Resolve the GNN hyperparameter/config mismatch, fix the LSTM hidden-dimension default, lock the current-constituent universe language, and standardize sector labels. These are small changes that prevent confusing or invalid comparisons later.
   Notebook output: no need to make any notebook changes.
 
-- [x] **4. Implement statistical testing infrastructure**
-
-  Implement `src/significance.py`, generate per-week model error series, and add block-bootstrap Sharpe confidence intervals. This can run before or alongside diagnostics, but it must be complete before any final performance claims.
-  Notebook output: write and display DM, bootstrap, and significance summary tables in `notebooks/07_significance.ipynb`. The notebook should show the main tables with sorted model comparisons, confidence intervals, and FDR-adjusted significance flags. Execute/save with `uv run jupyter nbconvert --to notebook --execute --inplace notebooks/07_significance.ipynb`; saved artifacts should be `data/results/dm_test_results.csv`, `data/results/bootstrap_sharpe_ci.csv`, and `data/results/significance_summary.csv`.
 
 - [x] **5. Add core diagnostics on the existing baseline**
 
@@ -60,33 +56,24 @@ Notebook writing rule for every applicable item: create or update notebooks so t
 
 - [x] **7. Evaluate macro-feature models**
 
-  Compare macro-feature models against the frozen baseline using MSE, Rank IC, calibration, portfolio metrics, and significance tests. Continue only if the results clarify or improve the paper story.
-  Notebook output: display macro-vs-baseline ML metrics in `notebooks/05_evaluate.ipynb`, portfolio metrics in `notebooks/06_portfolio.ipynb`, and significance results in `notebooks/07_significance.ipynb`; saved comparison tables should live under `data/results/`. Execute/save all three notebooks with `uv run jupyter nbconvert --to notebook --execute --inplace <notebook>.ipynb` so the comparison tables and figures are visible when opened.
 
 - [ ] **8. Implement mixed rank-MSE loss**
 
   Run an alpha sweep on GNN-Correlation first, select alpha using validation only, then train all three graph variants with the selected mixed loss. Evaluate point accuracy, ranking, calibration, and portfolio behavior together.
-  Notebook output: run/display the alpha sweep and selected-alpha training summary in `notebooks/04c_rank_loss_models.ipynb`; display downstream evaluation in `notebooks/05_evaluate.ipynb`, `notebooks/06_portfolio.ipynb`, and `notebooks/07_significance.ipynb`; save sweep, prediction, checkpoint, and metrics artifacts under `data/results/` and `checkpoints/`. Execute/save the notebooks with `uv run jupyter nbconvert --to notebook --execute --inplace <notebook>.ipynb`; if training is too long for full notebook execution, run training through `uv run` scripts and keep the notebook as a reproducible artifact reader that displays the saved sweep and final metrics.
 
 - [ ] **9. Add portfolio robustness checks**
 
   Implement sector-neutral portfolios, ex-IT/Communication Services portfolios, and optionally long-only low-volatility sleeves. These test whether portfolio results are genuine stock-level signal or sector/regime artifacts.
   Notebook output: display robustness return curves, metrics tables, and concentration diagnostics in `notebooks/06_portfolio.ipynb`; save robustness returns and metrics under `data/results/`. Execute/save with `uv run jupyter nbconvert --to notebook --execute --inplace notebooks/06_portfolio.ipynb` so the return curves and robustness tables are visible without rerunning the portfolio code manually.
 
-- [ ] **10. Run final significance tests and update result tables**
-
-  Once the model set is final, regenerate all metrics, confidence intervals, FDR-corrected tests, and summary tables. These are the numbers that should feed the paper.
-  Notebook output: regenerate and display final ML tables in `notebooks/05_evaluate.ipynb`, final portfolio tables in `notebooks/06_portfolio.ipynb`, and final significance tables in `notebooks/07_significance.ipynb`; saved final tables should live under `data/results/`. Execute/save each final-results notebook with `uv run jupyter nbconvert --to notebook --execute --inplace <notebook>.ipynb`, then open the notebooks to confirm the saved outputs match the final CSV/parquet artifacts.
 
 - [ ] **11. Prepare paper figures and final narrative**
 
   Build the figures and frame the paper around conditional graph value, regime sensitivity, objective alignment, and finance-specific evaluation. Avoid claiming unconditional GNN superiority unless the final tests support it.
-  Notebook output: generate publication figures from `notebooks/07_significance.ipynb` or a dedicated final-figures section that reads only saved artifacts; write all PNGs to `data/results/figures/` and keep final narrative notes in `docs/research_journey.md` or the manuscript draft. Execute/save the figure notebook with `uv run jupyter nbconvert --to notebook --execute --inplace <notebook>.ipynb`, and make sure every figure used in the paper is both rendered in the notebook and saved as a standalone PNG.
 
 - [ ] **12. Defer future-work architecture**
 
   DropEdge, residual/Jumping Knowledge GNNs, edge-weighted graphs, multi-graph fusion, regime-gated GNNs, stronger baseline suites, multi-seed runs, and rolling-origin evaluation should remain future work unless the paper-scope items fail to produce a credible result.
-  Notebook output: not applicable unless one of these is promoted into current scope; if promoted, add its training outputs to the relevant `notebooks/04*.ipynb` notebook and its evaluation outputs to `notebooks/05_evaluate.ipynb`, `notebooks/06_portfolio.ipynb`, and `notebooks/07_significance.ipynb`. Execute/save any promoted-work notebooks with `uv run jupyter nbconvert --to notebook --execute --inplace <notebook>.ipynb`, and keep future-work placeholders out of final notebooks unless they contain actual results.
 
 ---
 
@@ -132,20 +119,13 @@ These tasks preserve the current state before making changes. This matters becau
 
 This is the highest-priority phase. Do not use new model results in a paper until this phase is complete.
 
-- [x] **Implement statistical significance testing in `src/significance.py`**
 
   Replace the current `NotImplementedError` stubs with working implementations:
 
-  - Diebold-Mariano test with Harvey-Leybourne-Newbold small-sample correction.
-  - Benjamini-Hochberg FDR correction.
-  - Full pairwise DM test orchestration for model-vs-baseline comparisons.
   - Circular block bootstrap for Sharpe ratio and Sharpe differences.
 
   Required outputs:
 
-  - `data/results/dm_test_results.csv`
-  - `data/results/bootstrap_sharpe_ci.csv`
-  - `data/results/significance_summary.csv`
 
   Context: current MSE differences are small enough that point estimates alone are not publishable. The GNN ensemble beats LSTM by about `0.00041` MSE and HAR per-stock by about `0.00084` MSE. These improvements may or may not survive formal tests over 103 test weeks.
 
@@ -159,9 +139,6 @@ This is the highest-priority phase. Do not use new model results in a paper unti
 
   Save these in a reusable artifact such as:
 
-  - `data/results/weekly_model_errors.parquet`
-
-  Context: the DM test should operate on per-week loss differentials, not on one pooled scalar MSE. This preserves the time-series structure of forecast errors.
 
 - [x] **Add Sharpe bootstrap inputs**
 
@@ -172,7 +149,6 @@ This is the highest-priority phase. Do not use new model results in a paper unti
   - volatility-targeted
   - minimum variance
 
-  Context: bootstrap Sharpe intervals require the actual weekly return series, not only summary tables. The block bootstrap should preserve serial dependence by resampling contiguous blocks.
 
 - [x] **Create an experiment registry**
 
@@ -500,9 +476,7 @@ This is the first major feature improvement. It should be implemented after Phas
   - top-quartile hit rate
   - calibration slope
   - portfolio Sharpe
-  - significance tests
 
-  Context: the key question is not just whether macro features improve the GNN. It is whether they improve the GNN more than they improve LSTM, and whether the improvement survives significance testing.
 
 ---
 
@@ -581,7 +555,6 @@ Scope status: **current paper scope, high importance.** This phase corresponds t
   - long-only portfolios
   - sector-neutral portfolios
   - minimum-variance portfolios
-  - significance tests
 
   Context: mixed loss is only useful if it improves ranking without destroying the downstream portfolio methods that need calibrated volatility.
 
@@ -811,14 +784,12 @@ These tasks strengthen the project but are mostly **future work** for the first 
 
   Required figure set:
 
-  - model test MSE with confidence intervals
   - Rank IC by model
   - calibration curves
   - graph density over time
   - portfolio cumulative returns
   - sector-neutral portfolio results
   - regime breakdown heatmap
-  - significance test summary
 
   Context: the final paper should not rely on raw CSV tables alone.
 
@@ -826,11 +797,9 @@ These tasks strengthen the project but are mostly **future work** for the first 
 
 ## Recommended Immediate Sequence
 
-If work starts now, the next ten concrete tasks should be:
+If work starts now, the next concrete tasks should be:
 
-- [x] Implement `src/significance.py`.
 - [x] Generate weekly model error series.
-- [x] Generate bootstrap Sharpe confidence intervals.
 - [x] Create the experiment registry.
 - [x] Resolve GNN hyperparameter/config mismatch.
 - [x] Fix LSTM hidden-dim default.
@@ -839,7 +808,7 @@ If work starts now, the next ten concrete tasks should be:
 - [x] Add calibration and prediction-spread diagnostics.
 - [x] Add graph-density and regime-breakdown diagnostics.
 
-After those are done, the next model-improvement task should be the market-regime feature upgrade, followed by mixed rank-MSE loss.
+After those are done, the next model-improvement task should be mixed rank-MSE loss.
 
 Future-work items should not be started until the paper-scope checklist is stable unless a specific diagnostic makes one necessary.
 

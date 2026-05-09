@@ -6,7 +6,6 @@
 
 ## Why This Title Fits
 
-This title matches the current evidence without overstating the results. The final results show that the tuned macro-enhanced correlation GNN has the best point-estimate test MSE and significantly improves weekly MSE relative to HAR baselines after FDR correction. At the same time, the evidence does not support a broad claim that GNNs dominate every baseline or that better prediction metrics automatically produce better portfolio outcomes.
 
 The title puts the central research tension first: whether stronger volatility forecasts translate into investable portfolio gains. It also keeps the GNN contribution visible without making the paper sound like a pure architecture paper.
 
@@ -23,7 +22,6 @@ This preserves the project framing:
 ## Supported Results
 
 - `GNN-Correlation + Macro Tuned` has the best point-estimate test MSE in the final model roster.
-- Weekly Diebold-Mariano tests with FDR correction support significant MSE improvement for `GNN-Correlation + Macro Tuned` versus HAR baselines.
 - Macro-enhanced graph models improve several point-estimate metrics, especially for sector and Granger graph variants.
 - `GNN-Ensemble + Macro` has the strongest final Rank IC point estimate, suggesting useful cross-sectional ranking signal.
 - Portfolio results are more mixed than forecast metrics, which supports the prediction-to-portfolio theme.
@@ -33,7 +31,6 @@ This preserves the project framing:
 The paper should not claim:
 
 - GNNs dominate all baselines.
-- Macro features are statistically significant across all model families.
 - The tuned macro correlation GNN significantly beats LSTM after multiple-testing correction.
 - Stronger Rank IC automatically implies better portfolio performance.
 - Portfolio Sharpe improvements are broadly significant unless the relevant bootstrap intervals support that claim.

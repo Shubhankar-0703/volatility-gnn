@@ -7,7 +7,6 @@ Intended to support the paper's experiments section and as a reference when writ
 
 ## Chapter 1 — Early Drafts and the Decision to Rebuild
 
-The project did not start from scratch. Before the current codebase, there were rough implementations: a basic GNN, an ARIMA baseline, an LSTM, and a feature pipeline. These ran on a small universe and produced results, but the code had no consistent structure. The GNN produced poor predictions. There was no portfolio layer, no significance testing, and no guarantee of lookahead-freeness.
 
 Rather than patch those drafts, the decision was made to start over with a structured plan. The reasons were practical: a cleaner codebase would be easier to reason about during model debugging and would produce a more credible paper. All code moved into a `src/` module structure. All constants moved to `config.py`. Notebooks became orchestration layers only. The project outline and CLAUDE.md were written before any new code to lock down the rules before they could be violated.
 
@@ -249,7 +248,6 @@ Every model had positive IC in every single test week. IC of 0.37-0.43 is high b
 
 GNN-Correlation ranks second (0.4113) and leads all baselines except LSTM. GNN-Granger has the lowest mean IC but the most consistent IC (highest t-stat and IR), meaning its weekly signal is stable even if the average is lower.
 
-These t-stats are far above any significance threshold. The honest framing for the paper: all six models have statistically significant and persistent cross-sectional predictive power, but the signal is dominated by volatility autocorrelation shared by all approaches.
 
 ---
 
@@ -444,7 +442,6 @@ The pairwise accuracy metric as implemented was checking `sign(pred_i - pred_j)`
 
 The rank loss achieved its intended effect on Rank IC, ICIR, and hit rate. All three improved. The three graph types converged toward similar IC (0.41-0.43 range) where under MSE they had spread (0.37-0.42). The rank loss is a partial equalizer across graph architectures.
 
-The consistency improvement is the most useful finding for the paper. An ICIR above 4.0 for GNN-Sector and GNN-Granger is a strong result. For a cross-sectional equity factor, ICIR above 2.0 is considered portfolio-grade. The rank loss models are above that threshold for all three graph types, while the MSE models fell below it for Sector (3.40) and Granger (3.66) depending on how one sets the threshold. Whether ICIR above 4 is meaningful in an out-of-sample 103-week test is the question the significance tests in Phase 5.3 will address.
 
 The practical cost is the prediction calibration loss. Inverse-volatility weighting and minimum variance optimization both depend on the absolute scale of predicted RV, not just the ranking. Rank loss models cannot be dropped into those constructions without re-calibration. They are suitable for the long-short portfolio (which depends only on relative rankings) but not for inverse-vol or min-var portfolios without an additional step to restore scale.
 
@@ -495,15 +492,11 @@ Sector labels were standardized from yfinance-style labels into canonical GICS-s
 
 ---
 
-## Chapter 16 — Significance Testing
 
 The first evaluation tables were useful for model development, but point estimates alone were too weak for final claims. The MSE differences were often tiny. For example, the frozen GNN ensemble beat LSTM by about 0.00041 MSE and HAR per-stock by about 0.00085 MSE. With only 103 test weeks, this is exactly the kind of result that can look meaningful in a table while failing a time-series test.
 
-`src/significance.py` now implements the core testing layer:
 
-- Diebold-Mariano tests using weekly loss differentials.
 - Harvey-Leybourne-Newbold small-sample correction.
-- Benjamini-Hochberg FDR correction.
 - Circular block bootstrap for Sharpe ratios and Sharpe differences.
 
 The key methodological correction was to test per-week model error series, not pooled scalar MSE. The weekly loss series is:
@@ -512,16 +505,6 @@ The key methodological correction was to test per-week model error series, not p
 weekly_mse[t] = mean across stocks of (actual_rv[t] - predicted_rv[t])^2
 ```
 
-Those series are saved in `data/results/weekly_model_errors.parquet`. The DM test then operates on 103 weekly loss differentials, preserving the time structure of the forecast errors. This is more defensible than pretending that all stock-week errors are independent observations.
-
-The initial significance artifacts are:
-
-- `data/results/dm_test_results.csv`
-- `data/results/bootstrap_sharpe_ci.csv`
-- `data/results/significance_summary.csv`
-- `data/results/weekly_model_errors.parquet`
-
-The final significance pass found only a narrow set of statistically supportable MSE claims. In `dm_test_results.csv`, the 252-day tuned macro correlation GNN is FDR-significant versus HAR per-stock (`p_bh=0.0112`) and HAR pooled (`p_bh=0.0033`). The matched macro-vs-baseline comparisons did not survive FDR correction; the best adjusted p-value was about 0.200. This is an important constraint on the paper story. Macro features improved several point estimates, but the formal tests do not support saying every macro upgrade significantly improved its matched baseline.
 
 The bootstrap portfolio result is similarly cautionary. The final summary reports 0 positive Sharpe-difference intervals for the broad baseline/final comparisons, but 7 positive intervals among 24 matched macro Sharpe-difference intervals. Translation: the return side has some encouraging macro-feature evidence, especially in portfolio variants, but it is not a blanket win across every comparison.
 
@@ -623,11 +606,9 @@ The final ML table changed the project story:
 | LSTM | 0.032424 | 0.7088 |
 | HAR per-stock | 0.032858 | 0.7070 |
 
-The 252-day tuned macro correlation GNN is now the best point-forecast model in the table. It improves over the frozen GNN-Correlation by about 0.00130 MSE and over HAR per-stock by about 0.00197 MSE. That second comparison survives the final DM/FDR test. The matched macro-vs-baseline improvement does not survive FDR correction, so the honest wording is: the 252-day tuned macro GNN is significantly better than HAR baselines in the final table, but the macro upgrade itself is not statistically significant across matched model pairs after FDR correction.
 
 Rank IC also improved. The best overall Rank IC is the macro ensemble at 0.4378, followed by GNN-Granger + Macro at 0.4295, LSTM at 0.4288, and GNN-Correlation + Macro 252d Tuned at 0.4286. This is a subtle but important result. The best MSE model is not the best ranking model. The macro ensemble is the best cross-sectional ranker, while the 252-day tuned macro correlation GNN is the best point forecaster.
 
-The macro portfolio results were stronger than the ML significance story. In inverse-volatility portfolios, equal-weight still wins with Sharpe 0.513, but macro GNNs moved closer:
 
 | Model | Inverse-vol Sharpe |
 |---|---:|
@@ -668,12 +649,8 @@ The final result artifacts include:
 - `data/results/final_portfolio_long_short_metrics.csv`
 - `data/results/final_portfolio_vol_target_metrics.csv`
 - `data/results/final_portfolio_minvar_metrics.csv`
-- `data/results/final_dm_test_summary.csv`
-- `data/results/final_bootstrap_sharpe_summary.csv`
 - `data/results/final_macro_vs_baseline_deltas.csv`
-- `data/results/final_significance_summary.csv`
 
-The current project state is much more credible than the original exploratory version. The baseline is frozen. The registry records provenance. Reproducibility inconsistencies are fixed. Significance tests exist. Diagnostics explain calibration, spread, graph density, oversmoothing, regimes, and within-sector ranking. Macro/regime features have been added with lookahead-safe train-only normalization. Macro neural models were trained and evaluated fairly, including LSTM.
 
 The story is not that GNNs always dominate. That would still be too strong. The better story is conditional:
 
@@ -681,14 +658,12 @@ The story is not that GNNs always dominate. That would still be too strong. The 
 Graph structure contains useful cross-sectional volatility information, but its value depends on regime stability, objective alignment, calibration, and portfolio construction.
 ```
 
-The latest evidence supports that framing. Macro graph models now lead the point-forecast table, the macro ensemble leads Rank IC, and sector/granger macro models lead minimum-variance portfolio Sharpe. But matched macro-vs-baseline DM tests do not survive FDR correction, and equal-weight still beats inverse-volatility portfolios on Sharpe. The results are useful precisely because they are not one-dimensional.
 
 ---
 
 ## Open questions
 
 - Sector-neutral and ex-sector portfolios remain the next finance robustness checks after mixed loss. The within-sector IC results suggest there is real within-sector signal, but portfolio construction still needs to prove it.
-- The macro feature upgrade improved several final results, but matched macro-vs-baseline DM tests did not survive FDR correction. The paper should report this honestly and avoid claiming universal macro-feature significance.
 - Oversmoothing is measured, especially in dense correlation graphs, but architecture fixes such as DropEdge, residual connections, Jumping Knowledge, and regime-gated GNNs remain future work unless the paper-scope tasks fail.
 
 ---
@@ -783,7 +758,6 @@ The registry now includes both new experiment IDs:
 - `gnn_granger_vol`
 - `gnn_granger_vol_macro`
 
-These should be included in future final significance runs if the paper reports volatility-Granger results. Until those significance tests are regenerated, the results above should be treated as point estimates from the current saved predictions, not final statistical claims.
 
 ---
 
@@ -828,7 +802,6 @@ The 21-day model is the strongest point estimate in this experiment. It has the 
 
 The 63-day and 126-day models did not improve the headline metrics. The 63-day model is close to the frozen GNN-Correlation baseline on MSE but worse than the 252-day tuned macro model and clearly worse than the 21-day window. The 126-day model sits between 21 and 63 days on MSE but does not improve ranking or portfolio metrics.
 
-The DM tests versus frozen `GNN-Correlation` should be treated cautiously. The 21-day model has the largest mean loss improvement, about 0.00262, but the matched DM test does not survive FDR correction. The practical conclusion is therefore not "21 days is statistically proven best." The better interpretation is:
 
 ```text
 Shorter correlation windows are worth tuning. The 21-day macro correlation GNN produced the best point estimates so far, supporting the concern that the 252-day graph can be too stale in unstable regimes. However, the current window comparison reused the same macro GNN hyperparameters across all windows, so the result is not a fully fair per-window optimum.
@@ -870,7 +843,6 @@ The corresponding checkpoints and predictions are:
 
 A checkpoint sanity check on validation week `2023-06-26` succeeded for all three tuned models, with output shape `(465,)` and zero NaN predictions.
 
-These are validation-selection results, not final test claims. The downstream evaluation tables in the current saved artifacts still primarily reflect the earlier non-hparam window models. The next step is to regenerate ML metrics, Rank IC, calibration, portfolio metrics, and significance tests with the three `_hparam` prediction files included, then decide whether the 126-day validation winner also holds up on test and portfolio evidence.
 
 ---
 
@@ -882,7 +854,6 @@ The final result notebooks are:
 
 - `notebooks/05_evaluate.ipynb` for point-forecast metrics, Rank IC, calibration, and diagnostic tables.
 - `notebooks/06_portfolio.ipynb` for inverse-volatility and optimizer-based portfolio results.
-- `notebooks/07_significance.ipynb` for weekly-error DM tests and block-bootstrap Sharpe intervals.
 
 The table below combines the key results currently visible in those notebooks. It is sorted by test MSE. `Inv-vol Sharpe` is the long-only inverse-volatility portfolio, while `Min-var Sharpe` is the minimum-variance portfolio using each model's predicted volatility as the covariance diagonal.
 
@@ -921,14 +892,10 @@ The final dynamic-window comparison should use only the per-window tuned models 
 
 This means the paper should not say that one lookback window is universally optimal. The defensible conclusion is that shortening the correlation graph lookback improved regime responsiveness, but the preferred window depends on whether the target is point accuracy, directional accuracy, ranking, or portfolio construction.
 
-### Significance interpretation
-
-The matched macro-vs-baseline DM tests do not produce FDR-significant improvements after Benjamini-Hochberg correction. The smallest raw p-value is for `GNN-Granger + Macro` versus `GNN-Granger` (`p=0.0333`), but its BH-adjusted p-value is `0.2849`. The tuned 63-day macro correlation model improves mean weekly loss versus frozen `GNN-Correlation`, but its BH-adjusted p-value is also `0.2849`.
 
 This should shape the final paper language. The results support a measured claim:
 
 ```text
-Macro/regime features and more responsive graph construction improve several point estimates and portfolio outcomes, especially for correlation and sector GNNs, but the final statistical tests do not support a blanket claim of statistically significant GNN dominance across all baselines.
 ```
 
 The final narrative should emphasize conditional graph value: graph structure helps when the graph is aligned with the regime, objective, and portfolio construction method. The evidence is strongest for point-forecast improvement from a tuned shorter correlation window and for macro GNNs in minimum-variance portfolios. The evidence is weaker for unconditional superiority over LSTM or equal-weight portfolio baselines.
