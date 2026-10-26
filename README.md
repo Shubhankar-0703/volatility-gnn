@@ -1,1 +1,1 @@
-# volatility-gnn
+# Volatility - GNN
