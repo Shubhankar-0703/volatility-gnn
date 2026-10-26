@@ -369,12 +369,17 @@ def _granger_pair(args: tuple) -> tuple:
     the F-test comparing restricted (B lags only) vs unrestricted (B + A lags) OLS.
     Returns pvalue=1.0 for degenerate pairs (constant series, NaN, etc.).
     """
+    from contextlib import redirect_stdout
+    from io import StringIO
     from statsmodels.tsa.stattools import grangercausalitytests
     b_idx, a_idx, lag = args
     # grangercausalitytests expects column 0 = target (B), column 1 = cause (A)
     data = np.column_stack([_GRANGER_RETURNS[:, b_idx], _GRANGER_RETURNS[:, a_idx]])
     try:
-        res = grangercausalitytests(data, maxlag=lag, verbose=False)
+        # `verbose` was removed from newer statsmodels releases. Capture the
+        # function's textual report instead, while preserving its result API.
+        with redirect_stdout(StringIO()):
+            res = grangercausalitytests(data, maxlag=lag)
         pvalue = float(res[lag][0]["ssr_ftest"][1])
     except Exception:
         pvalue = 1.0
@@ -390,50 +395,78 @@ def run_granger_tests_cpu(
     output_filename: str = "granger_pvalues.parquet",
     series_name: str = "returns",
 ) -> pd.DataFrame:
+    """Compute Granger p-values with batched float64 CPU OLS.
+
+    Uses the same normal-equation F-test as ``run_granger_tests_gpu``. The
+    ``n_workers`` argument is retained for API compatibility and limits BLAS
+    threads; this implementation does not spawn multiprocessing workers, which
+    avoids platform-specific spawn and shared-memory failures on desktop systems.
+
+    Matrix rows are target tickers and columns are cause tickers, matching
+    ``build_granger_graph``. Inputs are restricted to ``train_end``.
     """
-    Compute Granger causality p-values for all N*(N-1) ordered pairs using CPU multiprocessing.
+    from scipy.stats import f as f_dist
+    from threadpoolctl import threadpool_limits
 
-    Wraps statsmodels grangercausalitytests. Each worker process receives the full
-    training returns array once via Pool initializer (avoids re-serialization per pair).
-
-    log_returns: Daily log returns, shape (num_trading_days, num_stocks). Columns = tickers.
-    tickers: Ordered ticker list, length N. Must match columns of log_returns.
-    train_end: Last date of training data. Default = config.TRAIN_END = "2022-12-31".
-    lag: Number of lags for the Granger F-test. Default = config.GRANGER_LAG = 5.
-    n_workers: CPU cores. None = all available (os.cpu_count()).
-
-    Returns DataFrame of shape (N, N) — p-values. Diagonal = NaN (no self-test).
-    Saves result to data/graphs/granger_pvalues.parquet.
-
-    Lookahead safety: slices log_returns to [:train_end]. No val/test data enters.
-    Runtime: ~30-60s for N=50 (dev), ~6-12h for N=462 (full) on Colab CPU.
-    Shape assertion: output DataFrame is (N, N).
-    """
-    from multiprocessing import Pool
-
-    train_data = log_returns.loc[:train_end].dropna().values.astype(np.float64)
+    train_data = log_returns.loc[:train_end].dropna().to_numpy(dtype=np.float64)
     T, N = train_data.shape
-    n_workers = n_workers or os.cpu_count()
-    pairs = [(b, a, lag) for b in range(N) for a in range(N) if a != b]
+    if N != len(tickers):
+        raise ValueError(f"Received {N} return columns for {len(tickers)} tickers.")
+    if T <= 3 * lag + 1:
+        raise ValueError(f"Need more than {3 * lag + 1} training rows; got {T}.")
 
-    print(f"CPU Granger tests ({series_name}): {N} stocks, {T} training rows, lag={lag}")
-    print(f"Total pairs: {len(pairs):,}  |  Workers: {n_workers}")
+    T_eff = T - lag
+    df1 = lag
+    df2 = T_eff - 2 * lag - 1
+    n_threads = max(1, int(n_workers or min(os.cpu_count() or 1, 4)))
+    print(
+        f"Batched CPU Granger tests ({series_name}): {N} stocks, "
+        f"{T} training rows, lag={lag}, BLAS threads={n_threads}"
+    )
+    print(f"Total ordered pairs: {N * (N - 1):,}")
 
-    pval_matrix = np.full((N, N), np.nan)
-    print_every = max(1, len(pairs) // 20)
+    # lagged[ticker, time, offset] = R[time + lag - 1 - offset, ticker]
+    lagged = np.stack(
+        [train_data[lag - 1 - offset : T - 1 - offset, :] for offset in range(lag)],
+        axis=2,
+    ).transpose(1, 0, 2)
+    pval_matrix = np.full((N, N), np.nan, dtype=np.float64)
+    all_indices = np.arange(N)
+    print_every = max(1, N // 20)
 
-    with Pool(
-        processes=n_workers,
-        initializer=_init_granger_worker,
-        initargs=(train_data,),
-    ) as pool:
-        for i, (b_idx, a_idx, pval) in enumerate(
-            pool.imap_unordered(_granger_pair, pairs, chunksize=50)
-        ):
-            pval_matrix[b_idx, a_idx] = pval
-            if (i + 1) % print_every == 0:
-                print(f"  {i+1:>7,}/{len(pairs):,} pairs done", end="\r")
-    print()
+    with threadpool_limits(limits=n_threads):
+        for b_idx in range(N):
+            cause_indices = all_indices[all_indices != b_idx]
+            y = train_data[lag:, b_idx]
+            y_ss = float(y @ y)
+            X_r = np.column_stack((np.ones(T_eff), lagged[b_idx]))
+            try:
+                XrTXr = X_r.T @ X_r
+                XrTy = X_r.T @ y
+                beta_r = np.linalg.solve(XrTXr, XrTy)
+                rss_r = max(y_ss - float(XrTy @ beta_r), 0.0)
+
+                X_r_batch = np.broadcast_to(
+                    X_r, (len(cause_indices), T_eff, X_r.shape[1])
+                )
+                X_ur = np.concatenate((X_r_batch, lagged[cause_indices]), axis=2)
+                XtX = X_ur.transpose(0, 2, 1) @ X_ur
+                Xty = np.einsum("nti,t->ni", X_ur, y, optimize=True)
+                beta_ur = np.linalg.solve(XtX, Xty[..., None]).squeeze(-1)
+                rss_ur = np.maximum(
+                    y_ss - np.einsum("ni,ni->n", Xty, beta_ur),
+                    np.finfo(np.float64).tiny,
+                )
+                f_stats = np.maximum(
+                    ((rss_r - rss_ur) / df1) / (rss_ur / df2), 0.0
+                )
+                pval_matrix[b_idx, cause_indices] = f_dist.sf(f_stats, df1, df2)
+            except np.linalg.LinAlgError:
+                # Treat a singular target regression as no detected causality.
+                pval_matrix[b_idx, cause_indices] = 1.0
+
+            if (b_idx + 1) % print_every == 0 or b_idx == N - 1:
+                print(f"  {b_idx + 1:>4}/{N} target stocks done")
 
     pval_df = pd.DataFrame(pval_matrix, index=tickers, columns=tickers)
     assert pval_df.shape == (N, N), f"Expected ({N}, {N}), got {pval_df.shape}"
